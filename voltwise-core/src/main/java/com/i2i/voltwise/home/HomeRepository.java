@@ -1,0 +1,1 @@
+package com.i2i.voltwise.home; import org.springframework.data.jpa.repository.JpaRepository; import java.util.*; public interface HomeRepository extends JpaRepository<Home,UUID>{ Optional<Home> findByName(String name); }

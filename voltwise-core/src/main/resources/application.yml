@@ -1,0 +1,37 @@
+server:
+  port: ${PORT:8080}
+spring:
+  datasource:
+    url: ${DB_URL:jdbc:postgresql://localhost:5432/voltwise}
+    username: ${DB_USER:voltwise}
+    password: ${DB_PASSWORD:voltwise}
+  jpa:
+    hibernate.ddl-auto: ${JPA_DDL_AUTO:validate}
+    open-in-view: false
+  kafka:
+    bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:localhost:9092}
+    consumer:
+      group-id: voltwise-core
+      auto-offset-reset: earliest
+      key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      value-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+    producer:
+      key-serializer: org.apache.kafka.common.serialization.StringSerializer
+      value-serializer: org.apache.kafka.common.serialization.StringSerializer
+  mail:
+    host: ${MAIL_HOST:localhost}
+    port: ${MAIL_PORT:587}
+    username: ${MAIL_USERNAME:}
+    password: ${MAIL_PASSWORD:}
+    properties.mail.smtp.auth: ${MAIL_AUTH:false}
+    properties.mail.smtp.starttls.enable: ${MAIL_STARTTLS:false}
+voltwise:
+  demo-data-enabled: ${DEMO_DATA_ENABLED:true}
+  kafka:
+    telemetry-topic: voltwise.telemetry
+    registration-topic: voltwise.registration
+  ignite-addresses: ${IGNITE_ADDRESSES:localhost:10800}
+  gemini-api-key: ${GEMINI_API_KEY:}
+  gemini-model: ${GEMINI_MODEL:gemini-2.0-flash}
+  alert-from: ${ALERT_FROM:alerts@voltwise.local}
+springdoc.swagger-ui.path: /swagger-ui.html

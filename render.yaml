@@ -1,0 +1,90 @@
+services:
+  - type: pserv
+    name: wattflex-kafka
+    runtime: docker
+    plan: starter
+    region: frankfurt
+    dockerfilePath: ./infrastructure/render-kafka/Dockerfile
+    envVars:
+      - {key: KAFKA_NODE_ID, value: "1"}
+      - {key: KAFKA_PROCESS_ROLES, value: "broker,controller"}
+      - {key: KAFKA_LISTENERS, value: "PLAINTEXT://0.0.0.0:9092,CONTROLLER://0.0.0.0:9093"}
+      - {key: KAFKA_CONTROLLER_LISTENER_NAMES, value: CONTROLLER}
+      - {key: KAFKA_LISTENER_SECURITY_PROTOCOL_MAP, value: "CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT"}
+      - {key: KAFKA_INTER_BROKER_LISTENER_NAME, value: PLAINTEXT}
+      - {key: KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR, value: "1"}
+      - {key: KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR, value: "1"}
+      - {key: KAFKA_TRANSACTION_STATE_LOG_MIN_ISR, value: "1"}
+      - {key: KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS, value: "0"}
+      - {key: KAFKA_AUTO_CREATE_TOPICS_ENABLE, value: "true"}
+      - {key: KAFKA_LOG_DIRS, value: /var/lib/kafka/data}
+    disk:
+      name: kafka-data
+      mountPath: /var/lib/kafka/data
+      sizeGB: 1
+
+  - type: pserv
+    name: wattflex-ignite
+    runtime: image
+    plan: starter
+    region: frankfurt
+    image:
+      url: docker.io/apacheignite/ignite:2.16.0
+    envVars:
+      - {key: IGNITE_QUIET, value: "false"}
+
+  - type: web
+    name: wattflex-core
+    runtime: docker
+    plan: free
+    region: frankfurt
+    dockerfilePath: ./voltwise-core/Dockerfile
+    envVars:
+      - key: DATABASE_URL
+        fromDatabase: {name: wattflex-db, property: connectionString}
+      - key: DB_USER
+        fromDatabase: {name: wattflex-db, property: user}
+      - key: DB_PASSWORD
+        fromDatabase: {name: wattflex-db, property: password}
+      - {key: JPA_DDL_AUTO, value: update}
+      - key: KAFKA_BOOTSTRAP_SERVERS
+        fromService: {type: pserv, name: wattflex-kafka, property: hostport}
+      - key: IGNITE_ADDRESSES
+        fromService: {type: pserv, name: wattflex-ignite, property: hostport}
+      - {key: DEMO_DATA_ENABLED, value: "true"}
+      - {key: GEMINI_API_KEY, sync: false}
+      - {key: MAIL_HOST, sync: false}
+      - {key: MAIL_PORT, value: "587"}
+      - {key: MAIL_USERNAME, sync: false}
+      - {key: MAIL_PASSWORD, sync: false}
+      - {key: ALERT_FROM, value: alerts@wattflex.local}
+
+  - type: worker
+    name: wattflex-sensors
+    runtime: docker
+    plan: starter
+    region: frankfurt
+    dockerfilePath: ./voltwise-sensors/Dockerfile
+    envVars:
+      - key: KAFKA_BOOTSTRAP_SERVERS
+        fromService: {type: pserv, name: wattflex-kafka, property: hostport}
+      - {key: SENSOR_INTERVAL_MS, value: "3000"}
+
+  - type: web
+    name: wattflex-web
+    runtime: docker
+    plan: free
+    region: frankfurt
+    dockerfilePath: ./voltwise-web/Dockerfile
+    healthCheckPath: /
+    envVars:
+      - key: CORE_HOSTPORT
+        fromService: {type: web, name: wattflex-core, property: hostport}
+
+databases:
+  - name: wattflex-db
+    plan: free
+    region: frankfurt
+    databaseName: wattflex
+    user: wattflex
+    postgresMajorVersion: "16"
