@@ -73,8 +73,8 @@ public class NotificationService {
       Map<String, Object> body = Map.of("contents", List.of(
           Map.of("parts", List.of(Map.of("text", prompt)))));
       Map<?, ?> response = http.post()
-          .uri("https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={key}",
-              model, apiKey)
+          .uri("https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent", model)
+          .header("x-goog-api-key", apiKey.trim())
           .body(body).retrieve().body(Map.class);
       var candidates = (List<?>) response.get("candidates");
       var content = (Map<?, ?>) ((Map<?, ?>) candidates.get(0)).get("content");
