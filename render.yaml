@@ -18,6 +18,10 @@ services:
       - {key: KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS, value: "0"}
       - {key: KAFKA_AUTO_CREATE_TOPICS_ENABLE, value: "true"}
       - {key: KAFKA_LOG_DIRS, value: /var/lib/kafka/data}
+      - {key: KAFKA_HEAP_OPTS, value: "-Xms128m -Xmx256m"}
+      - {key: KAFKA_NUM_NETWORK_THREADS, value: "2"}
+      - {key: KAFKA_NUM_IO_THREADS, value: "2"}
+      - {key: KAFKA_LOG_CLEANER_THREADS, value: "1"}
     disk:
       name: kafka-data
       mountPath: /var/lib/kafka/data
@@ -60,6 +64,7 @@ services:
           envVarKey: RENDER_DISCOVERY_SERVICE
       - {key: DEMO_DATA_ENABLED, value: "true"}
       - {key: GEMINI_API_KEY, sync: false}
+      - {key: GEMINI_MODEL, value: gemini-3.6-flash}
       - {key: MAIL_HOST, sync: false}
       - {key: MAIL_PORT, value: "587"}
       - {key: MAIL_USERNAME, sync: false}

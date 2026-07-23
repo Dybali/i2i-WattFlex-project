@@ -32,6 +32,6 @@ voltwise:
     registration-topic: voltwise.registration
   ignite-addresses: ${IGNITE_ADDRESSES:localhost:10800}
   gemini-api-key: ${GEMINI_API_KEY:}
-  gemini-model: ${GEMINI_MODEL:gemini-2.0-flash}
+  gemini-model: ${GEMINI_MODEL:gemini-3.6-flash}
   alert-from: ${ALERT_FROM:alerts@voltwise.local}
 springdoc.swagger-ui.path: /swagger-ui.html

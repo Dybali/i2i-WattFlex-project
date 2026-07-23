@@ -9,6 +9,8 @@ import org.springframework.mail.SimpleMailMessage;
 import org.springframework.mail.javamail.JavaMailSender;
 import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestClient;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.util.List;
 import java.util.Map;
@@ -16,6 +18,7 @@ import java.util.Objects;
 
 @Service
 public class NotificationService {
+  private static final Logger log = LoggerFactory.getLogger(NotificationService.class);
   private final RestClient http;
   private final JavaMailSender mail;
   private final RecommendationRepository recommendations;
@@ -73,14 +76,15 @@ public class NotificationService {
       Map<String, Object> body = Map.of("contents", List.of(
           Map.of("parts", List.of(Map.of("text", prompt)))));
       Map<?, ?> response = http.post()
-          .uri("https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={key}",
-              model, apiKey)
+          .uri("https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent", model)
+          .header("x-goog-api-key", apiKey)
           .body(body).retrieve().body(Map.class);
       var candidates = (List<?>) response.get("candidates");
       var content = (Map<?, ?>) ((Map<?, ?>) candidates.get(0)).get("content");
       var parts = (List<?>) content.get("parts");
       return Objects.toString(((Map<?, ?>) parts.get(0)).get("text"), fallback);
-    } catch (Exception ignored) {
+    } catch (Exception error) {
+      log.warn("Gemini request failed for model {}: {}", model, error.getMessage());
       return fallback;
     }
   }
