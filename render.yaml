@@ -75,7 +75,8 @@ services:
     runtime: docker
     plan: free
     region: frankfurt
-    dockerfilePath: ./voltwise-web/Dockerfile
+    rootDir: voltwise-web
+    dockerfilePath: ./Dockerfile
     healthCheckPath: /
     envVars:
       - key: CORE_HOSTPORT
