@@ -40,9 +40,8 @@ services:
     region: frankfurt
     dockerfilePath: ./voltwise-core/Dockerfile
     envVars:
-      # application.yml reads DB_URL. Keeping the name aligned prevents the
-      # core API from trying to connect to localhost on Render.
-      - key: DB_URL
+      # render-entrypoint.sh converts Render's PostgreSQL URL to JDBC DB_URL.
+      - key: DATABASE_URL
         fromDatabase: {name: wattflex-db, property: connectionString}
       - key: DB_USER
         fromDatabase: {name: wattflex-db, property: user}
