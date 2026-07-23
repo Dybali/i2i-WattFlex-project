@@ -4,7 +4,7 @@ set -eu
 # Render supplies postgresql://user:password@host/database, while the JDBC
 # driver expects credentials separately and a jdbc:postgresql:// URL.
 # Local Docker Compose continues to provide DB_URL directly.
-if [ -n "${DATABASE_URL:-}" ] && [ -z "${DB_URL:-}" ]; then
+if [ -n "${DATABASE_URL:-}" ]; then
   render_db="${DATABASE_URL#postgresql://}"
   render_host_path="${render_db#*@}"
   render_host="${render_host_path%%/*}"
