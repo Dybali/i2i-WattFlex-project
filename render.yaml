@@ -79,8 +79,12 @@ services:
     dockerfilePath: ./Dockerfile
     healthCheckPath: /
     envVars:
-      - key: CORE_HOSTPORT
-        fromService: {type: web, name: wattflex-core, property: hostport}
+      - {key: CORE_SCHEME, value: https}
+      - key: CORE_HOST
+        fromService:
+          type: web
+          name: wattflex-core
+          envVarKey: RENDER_EXTERNAL_HOSTNAME
 
 databases:
   - name: wattflex-db
