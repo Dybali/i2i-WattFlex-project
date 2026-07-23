@@ -8,4 +8,6 @@ RUN mvn -pl voltwise-sensors -am -DskipTests package
 FROM eclipse-temurin:17-jre
 WORKDIR /app
 COPY --from=build /src/voltwise-sensors/target/voltwise-sensors-1.0.0.jar app.jar
-ENTRYPOINT ["java","-jar","app.jar"]
+COPY voltwise-sensors/render-entrypoint.sh /app/render-entrypoint.sh
+RUN chmod +x /app/render-entrypoint.sh
+ENTRYPOINT ["/app/render-entrypoint.sh"]

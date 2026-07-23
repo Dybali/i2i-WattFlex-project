@@ -47,10 +47,16 @@ services:
       - key: DB_PASSWORD
         fromDatabase: {name: wattflex-db, property: password}
       - {key: JPA_DDL_AUTO, value: update}
-      - key: KAFKA_BOOTSTRAP_SERVERS
-        fromService: {type: pserv, name: wattflex-kafka, property: hostport}
-      - key: IGNITE_ADDRESSES
-        fromService: {type: pserv, name: wattflex-ignite, property: hostport}
+      - key: KAFKA_DISCOVERY_HOST
+        fromService:
+          type: pserv
+          name: wattflex-kafka
+          envVarKey: RENDER_DISCOVERY_SERVICE
+      - key: IGNITE_DISCOVERY_HOST
+        fromService:
+          type: pserv
+          name: wattflex-ignite
+          envVarKey: RENDER_DISCOVERY_SERVICE
       - {key: DEMO_DATA_ENABLED, value: "true"}
       - {key: GEMINI_API_KEY, sync: false}
       - {key: MAIL_HOST, sync: false}
@@ -66,8 +72,11 @@ services:
     region: frankfurt
     dockerfilePath: ./voltwise-sensors/Dockerfile
     envVars:
-      - key: KAFKA_BOOTSTRAP_SERVERS
-        fromService: {type: pserv, name: wattflex-kafka, property: hostport}
+      - key: KAFKA_DISCOVERY_HOST
+        fromService:
+          type: pserv
+          name: wattflex-kafka
+          envVarKey: RENDER_DISCOVERY_SERVICE
       - {key: SENSOR_INTERVAL_MS, value: "3000"}
 
   - type: web
