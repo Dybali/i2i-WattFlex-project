@@ -52,6 +52,7 @@ services:
           type: pserv
           name: wattflex-kafka
           envVarKey: RENDER_DISCOVERY_SERVICE
+      - {key: SPRING_KAFKA_LISTENER_AUTO_STARTUP, value: "false"}
       - key: IGNITE_DISCOVERY_HOST
         fromService:
           type: pserv
@@ -77,6 +78,7 @@ services:
           type: pserv
           name: wattflex-kafka
           envVarKey: RENDER_DISCOVERY_SERVICE
+      - {key: SPRING_KAFKA_LISTENER_AUTO_STARTUP, value: "false"}
       - {key: SENSOR_INTERVAL_MS, value: "3000"}
 
   - type: web
