@@ -26,7 +26,7 @@ public class AdvisorController {
   record AdviceRequest(String question, String evContext) {}
 
   @PostMapping("/{homeId}")
-  public Map<String, String> advise(@PathVariable UUID homeId,
+  public Map<String, String> advise(@PathVariable("homeId") UUID homeId,
                                     @RequestBody(required = false) AdviceRequest request) {
     var home = liveState.get(homeId);
     if (home == null) throw new NoSuchElementException("Ev bulunamadı");

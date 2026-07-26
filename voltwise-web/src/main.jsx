@@ -11,12 +11,13 @@ const money = n => new Intl.NumberFormat('tr-TR', {style: 'currency', currency: 
 const num = (n, d = 1) => Number(n || 0).toFixed(d);
 const clamp = (n, min, max) => Math.max(min, Math.min(max, n));
 const themeOrder = ['dark', 'light', 'system'];
-const USERS_KEY = 'wattflex-users';
-const SESSION_KEY = 'wattflex-session';
-const INVOICE_KEY = 'wattflex-invoice';
-const ONBOARD_KEY = 'wattflex-onboarded';
-const EV_ONBOARD_KEY = 'wattflex-ev-onboarded';
-const EV_PROFILE_KEY = 'wattflex-ev-profile';
+// Bu gelişmiş kopya, localhost'taki eski WattFlex oturumunu devralmamalı.
+const USERS_KEY = 'wattflex-main-users';
+const SESSION_KEY = 'wattflex-main-session';
+const INVOICE_KEY = 'wattflex-main-invoice';
+const ONBOARD_KEY = 'wattflex-main-onboarded';
+const EV_ONBOARD_KEY = 'wattflex-main-ev-onboarded';
+const EV_PROFILE_KEY = 'wattflex-main-ev-profile';
 
 const loadUsers = () => { try { return JSON.parse(localStorage.getItem(USERS_KEY)) || []; } catch { return []; } };
 const saveUsers = users => localStorage.setItem(USERS_KEY, JSON.stringify(users));
@@ -229,6 +230,19 @@ function Goals({homes, totals}) {
   </section>;
 }
 
+function localAdvisorFallback(home, question, evProfile) {
+  if (!home) return 'Enerji verisi henüz yüklenemedi. Birkaç saniye sonra tekrar deneyin.';
+  const q = question.toLocaleLowerCase('tr-TR');
+  const top = [...home.appliances].sort((a,b)=>b.watts-a.watts)[0];
+  const projected = home.cost * 1.16;
+  const climate = home.appliances.find(a=>a.name.toLocaleLowerCase('tr-TR').includes('klima'));
+  if (q.includes('en çok') || q.includes('hangi cihaz') || q.includes('tüketen')) return `${home.name} için en yüksek anlık tüketim ${top.name} cihazında: ${num(top.watts,0)} W. Güvenli limiti ${num(top.safeWattLimit,0)} W; ${top.anomalous?'limit aşıldığı için kullanımını azaltmanızı öneriyorum.':'şu an güvenli aralıkta.'}`;
+  if (q.includes('ay sonu') || q.includes('tahmin') || q.includes('fatura')) return `Mevcut eğilime göre ay sonu tahmini ${money(projected)}. Aylık bütçeniz ${money(home.budgetLimit)} ve kullanım oranı %${num(home.budgetPercent,0)}. ${projected>home.budgetLimit?'Bütçe aşımı riski var; yüksek güçlü cihazları 22:00 sonrası kullanın.':'Bütçe içinde kalma ihtimaliniz yüksek.'}`;
+  if (q.includes('klima') && climate) return `Klima şu an ${num(climate.watts,0)} W çekiyor; güvenli sınırı ${num(climate.safeWattLimit,0)} W. 24°C ayarı, filtre temizliği ve doğrudan güneşi kesmek tüketimi düşürmeye yardımcı olur.`;
+  if ((q.includes('araç') || q.includes('şarj')) && evProfile) return `${evProfile.brand} ${evProfile.model} için ev şarjını gece tarifesine taşımanız uygun olur. Haftada ${evProfile.homeChargeDaysPerWeek} gün evden şarj ediyorsunuz; mümkünse 22:00–06:00 aralığını tercih edin.`;
+  return `${home.name} için canlı toplam ${num(home.energyKwh,2)} kWh. İlk aksiyon olarak ${top.name} cihazını takip edin; ${top.anomalous?'güvenli limitin üzerinde görünüyor.':'zirve saatlerin dışında kullanmak maliyeti düşürür.'} Canlı AI yanıtı kısa süreliğine kullanılamıyor, bu öneri mevcut verilerden üretildi.`;
+}
+
 function Advisor({homes, evProfile}) {
   const [homeId, setHomeId] = useState(homes[0]?.id || '');
   const [question, setQuestion] = useState('Bu ay faturamı nasıl düşürebilirim?');
@@ -258,7 +272,7 @@ function Advisor({homes, evProfile}) {
       const data = await response.json();
       setMessages(m => [...m, {role:'ai',text:data.answer}]);
     } catch(e) {
-      setMessages(m => [...m, {role:'ai',text:'Şu anda canlı modele ulaşamıyorum. Klima sıcaklığını 24°C’ye ayarlamak, bekleme modlarını kapatmak ve yüksek güçlü cihazları gece tarifesinde kullanmak yaklaşık %12 tasarruf sağlayabilir.'}]);
+      setMessages(m => [...m, {role:'ai',text:localAdvisorFallback(homes.find(h=>h.id===homeId), text, evProfile)}]);
     } finally {
       setBusy(false);
     }
@@ -270,6 +284,17 @@ function Advisor({homes, evProfile}) {
 }
 
 function Detail({home, history, onClose}) {
+  const anomaly = home.appliances.some(a=>a.anomalous);
+  const [deviceId,setDeviceId]=useState(home.appliances[0]?.id);
+  const device=home.appliances.find(a=>a.id===deviceId)||home.appliances[0];
+  const deviceTrend=[.61,.78,.72,1.04,.84,1.12,.91].map((factor,index)=>({slot:['06:00','09:00','12:00','15:00','18:00','21:00','00:00'][index],watts:Math.round(device.watts*factor),limit:device.safeWattLimit}));
+  const projected=home.cost*1.16;
+  const status=device.anomalous?'Yüksek tüketim tespit edildi':'Tüketim güvenli aralıkta';
+
+  return <div className="overlay" onMouseDown={e=>e.target===e.currentTarget&&onClose()}><section className="modal detail-modal"><button className="close" onClick={onClose}>×</button><div className="modal-title"><span className="home-symbol large">⌂</span><div><small>CANLI ENERJİ PROFİLİ</small><h2>{home.name}</h2><p>{home.email}</p></div></div><div className="detail-metrics"><Metric label="ENERJİ" value={`${num(home.energyKwh,2)} kWh`} icon="ϟ" trend="Canlı toplam"/><Metric label="MALİYET" value={money(home.cost)} icon="₺" trend={`${num(home.budgetPercent,0)}% bütçe`}/><Metric label="CİHAZ DURUMU" value={anomaly?'Anomali':'Optimal'} icon="⌁" trend={`${home.appliances.length} cihaz`} warn={anomaly}/></div>{home.penalty&&<div className="penalty"><b>⚠ Ceza tarifesi etkin</b><span>Bütçe sınırı aşıldı; yeni tüketim premium tarife üzerinden hesaplanıyor.</span></div>}<div className="detail-columns"><div><div className="subhead"><h3>Cihaz telemetrisi</h3><span>CİHAZI SEÇİN</span></div><div className="devices">{home.appliances.map(a=><button type="button" className={`device ${a.anomalous?'anomaly':''} ${a.id===deviceId?'selected':''}`} onClick={()=>setDeviceId(a.id)} key={a.id}><span className="device-icon">{a.anomalous?'!':'ϟ'}</span><div><b>{a.name}</b><small>Güvenli sınır {num(a.safeWattLimit,0)} W</small></div><div className="device-power"><strong>{num(a.watts,0)} W</strong><small>{a.anomalous?'Limit ihlali':'Normal'}</small></div></button>)}</div><div className="detail-action"><small>AY SONU TAHMİNİ</small><b>{money(projected)}</b><p>{projected>home.budgetLimit?'Bütçeyi aşma riski var; seçili cihaz için öneriyi uygulayın.':'Bütçe kontrol altında. Gece tarifesiyle daha da düşürülebilir.'}</p></div></div><div className="detail-chart"><div className="subhead"><h3>{device.name} güç analizi</h3><span>WATT / SAAT</span></div><ResponsiveContainer width="100%" height={220}><AreaChart data={deviceTrend}><defs><linearGradient id="deviceFill" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stopColor="var(--accent)" stopOpacity=".45"/><stop offset="1" stopColor="var(--accent)" stopOpacity="0"/></linearGradient></defs><CartesianGrid stroke="var(--grid)" vertical={false}/><XAxis dataKey="slot" stroke="var(--muted)"/><YAxis stroke="var(--muted)"/><Tooltip contentStyle={{background:'var(--panel-solid)',border:'1px solid var(--line)'}}/><Area type="monotone" dataKey="watts" stroke="var(--accent)" strokeWidth={3} fill="url(#deviceFill)"/><Area type="monotone" dataKey="limit" stroke="var(--warning)" strokeDasharray="5 5" fill="none"/></AreaChart></ResponsiveContainer><div className="device-insight"><small>WATTFLEX ÖNERİSİ</small><p>{device.anomalous?`${device.name} güvenli sınırın üzerinde çalışıyor. Kullanım süresini azaltın veya cihaz ayarını düşürün.`:`${device.name} şu anda dengeli çalışıyor. Zirve saatlerde çalıştırmamak ek tasarruf sağlar.`}</p><div><span>Durum <b className={device.anomalous?'risk-high':'risk-good'}>{status}</b></span><span>Güvenli limit <b>{num(device.safeWattLimit,0)} W</b></span></div></div></div></div></section></div>;
+}
+
+function LegacyDetail({home, history, onClose}) {
   const anomaly = home.appliances.some(a=>a.anomalous);
   return <div className="overlay" onMouseDown={e=>e.target===e.currentTarget&&onClose()}><section className="modal detail-modal"><button className="close" onClick={onClose}>×</button><div className="modal-title"><span className="home-symbol large">⌂</span><div><small>CANLI ENERJİ PROFİLİ</small><h2>{home.name}</h2><p>{home.email}</p></div></div><div className="detail-metrics"><Metric label="ENERJİ" value={`${num(home.energyKwh,2)} kWh`} icon="ϟ" trend="Canlı toplam"/><Metric label="MALİYET" value={money(home.cost)} icon="₺" trend={`${num(home.budgetPercent,0)}% bütçe`}/><Metric label="CİHAZ DURUMU" value={anomaly?'Anomali':'Optimal'} icon="⌁" trend={`${home.appliances.length} cihaz`} warn={anomaly}/></div>{home.penalty&&<div className="penalty"><b>⚠ Ceza tarifesi etkin</b><span>Bütçe sınırı aşıldı; yeni tüketim premium tarife üzerinden hesaplanıyor.</span></div>}<div className="detail-columns"><div><div className="subhead"><h3>Cihaz telemetrisi</h3><span>CANLI</span></div><div className="devices">{home.appliances.map(a=><div className={`device ${a.anomalous?'anomaly':''}`} key={a.id}><span className="device-icon">{a.anomalous?'!':'ϟ'}</span><div><b>{a.name}</b><small>Güvenli sınır {num(a.safeWattLimit,0)} W</small></div><div className="device-power"><strong>{num(a.watts,0)} W</strong><small>{a.anomalous?'3× limit ihlali':'Normal'}</small></div></div>)}</div></div><div className="detail-chart"><div className="subhead"><h3>7 günlük eğilim</h3><span>kWh</span></div><ResponsiveContainer width="100%" height={280}><AreaChart data={history}><defs><linearGradient id="detailFill" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stopColor="#43e6a6" stopOpacity=".4"/><stop offset="1" stopColor="#43e6a6" stopOpacity="0"/></linearGradient></defs><CartesianGrid stroke="var(--grid)" vertical={false}/><XAxis dataKey="day" stroke="var(--muted)"/><YAxis stroke="var(--muted)"/><Tooltip contentStyle={{background:'var(--panel-solid)',border:'1px solid var(--line)'}}/><Area type="monotone" dataKey="energyKwh" stroke="#43e6a6" strokeWidth={3} fill="url(#detailFill)"/></AreaChart></ResponsiveContainer></div></div></section></div>;
 }

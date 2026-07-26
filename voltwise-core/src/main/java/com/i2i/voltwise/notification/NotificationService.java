@@ -81,20 +81,32 @@ public class NotificationService {
 
       prompt += ". Kullanıcı sorusu: " + reason;
 
-      Map<String, Object> body = Map.of("contents", List.of(
-              Map.of("parts", List.of(Map.of("text", prompt)))));
+      Map<String, Object> body = Map.of(
+              "contents", List.of(Map.of("parts", List.of(Map.of("text", prompt)))),
+              "generationConfig", Map.of("temperature", 0.35, "maxOutputTokens", 320)
+      );
       Map<?, ?> response = http.post()
               .uri("https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent", model)
               .header("x-goog-api-key", apiKey)
               .body(body).retrieve().body(Map.class);
-      var candidates = (List<?>) response.get("candidates");
-      var content = (Map<?, ?>) ((Map<?, ?>) candidates.get(0)).get("content");
-      var parts = (List<?>) content.get("parts");
-      return Objects.toString(((Map<?, ?>) parts.get(0)).get("text"), fallback);
+      return extractAnswer(response, fallback);
     } catch (Exception error) {
       log.warn("Gemini request failed for model {}: {}", model, error.getMessage());
       return fallback;
     }
+  }
+
+  /** Gemini bazen boş aday ya da güvenlik nedeniyle eksik içerik döndürebilir. */
+  private String extractAnswer(Map<?, ?> response, String fallback) {
+    if (response == null) return fallback;
+    Object candidatesValue = response.get("candidates");
+    if (!(candidatesValue instanceof List<?> candidates) || candidates.isEmpty()) return fallback;
+    if (!(candidates.get(0) instanceof Map<?, ?> candidate)) return fallback;
+    if (!(candidate.get("content") instanceof Map<?, ?> content)) return fallback;
+    if (!(content.get("parts") instanceof List<?> parts) || parts.isEmpty()) return fallback;
+    if (!(parts.get(0) instanceof Map<?, ?> part)) return fallback;
+    String answer = Objects.toString(part.get("text"), "").trim();
+    return answer.isBlank() ? fallback : answer;
   }
 
   private String fallbackAdvice(LiveModels.HomeLive live, String reason) {
