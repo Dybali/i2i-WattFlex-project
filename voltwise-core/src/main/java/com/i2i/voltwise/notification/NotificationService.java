@@ -9,6 +9,8 @@ import org.springframework.mail.SimpleMailMessage;
 import org.springframework.mail.javamail.JavaMailSender;
 import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestClient;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.util.List;
 import java.util.Map;
@@ -16,6 +18,7 @@ import java.util.Objects;
 
 @Service
 public class NotificationService {
+  private static final Logger log = LoggerFactory.getLogger(NotificationService.class);
   private final RestClient http;
   private final JavaMailSender mail;
   private final RecommendationRepository recommendations;
@@ -32,7 +35,7 @@ public class NotificationService {
   }
 
   public void notify(Home home, LiveModels.HomeLive live, String reason) {
-    String text = generate(live, reason);
+    String text = generate(live, reason, null);
     String status = "SKIPPED";
     try {
       if (!home.email.isBlank()) {
@@ -50,50 +53,71 @@ public class NotificationService {
     recommendations.save(new Recommendation(home, text, status));
   }
 
-  public String advise(LiveModels.HomeLive live, String question) {
+  // Frontend'den gelen elektrikli araç (evContext) datasını da kabul edecek şekilde güncellendi
+  public String advise(LiveModels.HomeLive live, String question, String evContext) {
     String reason = question == null || question.isBlank()
-        ? "Genel tüketim profilini incele ve en etkili üç tasarruf adımını öner"
-        : question;
-    return generate(live, reason);
+            ? "Genel tüketim profilini incele ve en etkili üç tasarruf adımını öner"
+            : question;
+    return generate(live, reason, evContext);
   }
 
-  private String generate(LiveModels.HomeLive live, String reason) {
+  private String generate(LiveModels.HomeLive live, String reason, String evContext) {
     String fallback = fallbackAdvice(live, reason);
     if (apiKey == null || apiKey.isBlank()) return fallback;
     try {
       String prompt = "Sen WattFlex enerji danışmanısın. Yalnızca Türkçe cevap ver. "
-          + "Yanıtın kısa, kişisel, sayısal ve uygulanabilir olsun. Ev=" + live.name
-          + ", enerji=" + String.format("%.2f", live.energyKwh) + " kWh"
-          + ", maliyet=" + String.format("%.2f", live.cost) + " TL"
-          + ", bütçe=" + String.format("%.2f", live.budgetLimit) + " TL"
-          + ", ceza tarifesi=" + live.penalty
-          + ", anomaliler=" + live.appliances.values().stream()
-              .filter(a -> a.anomalous).map(a -> a.name).toList()
-          + ". Kullanıcı sorusu: " + reason;
-      Map<String, Object> body = Map.of("contents", List.of(
-          Map.of("parts", List.of(Map.of("text", prompt)))));
+              + "Yanıtın kısa, kişisel, sayısal ve uygulanabilir olsun. Ev=" + live.name
+              + ", enerji=" + String.format("%.2f", live.energyKwh) + " kWh"
+              + ", maliyet=" + String.format("%.2f", live.cost) + " TL"
+              + ", bütçe=" + String.format("%.2f", live.budgetLimit) + " TL"
+              + ", ceza tarifesi=" + live.penalty
+              + ", anomaliler=" + live.appliances.values().stream()
+              .filter(a -> a.anomalous).map(a -> a.name).toList();
+
+      // Eğer sistemde kullanıcıya ait bir EV profili varsa bunu Gemini'a dahil ediyoruz
+      if (evContext != null && !evContext.isBlank()) {
+        prompt += ". Ek Bağlam: " + evContext;
+      }
+
+      prompt += ". Kullanıcı sorusu: " + reason;
+
+      Map<String, Object> body = Map.of(
+              "contents", List.of(Map.of("parts", List.of(Map.of("text", prompt)))),
+              "generationConfig", Map.of("temperature", 0.35, "maxOutputTokens", 320)
+      );
       Map<?, ?> response = http.post()
-          .uri("https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent", model)
-          .header("x-goog-api-key", apiKey.trim())
-          .body(body).retrieve().body(Map.class);
-      var candidates = (List<?>) response.get("candidates");
-      var content = (Map<?, ?>) ((Map<?, ?>) candidates.get(0)).get("content");
-      var parts = (List<?>) content.get("parts");
-      return Objects.toString(((Map<?, ?>) parts.get(0)).get("text"), fallback);
-    } catch (Exception ignored) {
+              .uri("https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent", model)
+              .header("x-goog-api-key", apiKey)
+              .body(body).retrieve().body(Map.class);
+      return extractAnswer(response, fallback);
+    } catch (Exception error) {
+      log.warn("Gemini request failed for model {}: {}", model, error.getMessage());
       return fallback;
     }
+  }
+
+  /** Gemini bazen boş aday ya da güvenlik nedeniyle eksik içerik döndürebilir. */
+  private String extractAnswer(Map<?, ?> response, String fallback) {
+    if (response == null) return fallback;
+    Object candidatesValue = response.get("candidates");
+    if (!(candidatesValue instanceof List<?> candidates) || candidates.isEmpty()) return fallback;
+    if (!(candidates.get(0) instanceof Map<?, ?> candidate)) return fallback;
+    if (!(candidate.get("content") instanceof Map<?, ?> content)) return fallback;
+    if (!(content.get("parts") instanceof List<?> parts) || parts.isEmpty()) return fallback;
+    if (!(parts.get(0) instanceof Map<?, ?> part)) return fallback;
+    String answer = Objects.toString(part.get("text"), "").trim();
+    return answer.isBlank() ? fallback : answer;
   }
 
   private String fallbackAdvice(LiveModels.HomeLive live, String reason) {
     double percent = live.budgetLimit == 0 ? 0 : live.cost / live.budgetLimit * 100;
     String priority = live.penalty
-        ? "Ceza tarifesi etkin. Klima ve yüksek güçlü cihazları yoğun saatler dışında kullanın."
-        : percent >= 80
-          ? "Bütçenizin yüzde 80'ini geçtiniz. Bugün gereksiz bekleme tüketimini kapatın."
-          : "Tüketiminiz kontrol altında. Programlı cihaz kullanımını sürdürün.";
+            ? "Ceza tarifesi etkin. Klima ve yüksek güçlü cihazları yoğun saatler dışında kullanın."
+            : percent >= 80
+            ? "Bütçenizin yüzde 80'ini geçtiniz. Bugün gereksiz bekleme tüketimini kapatın."
+            : "Tüketiminiz kontrol altında. Programlı cihaz kullanımını sürdürün.";
     return "WattFlex AI analizi: " + priority
-        + " Tahmini yüzde 12 tasarruf için klimayı 24°C'de çalıştırın, çamaşır makinesini tam dolu kullanın "
-        + "ve gece bekleme yüklerini kapatın. Sorunuz: " + reason;
+            + " Tahmini yüzde 12 tasarruf için klimayı 24°C'de çalıştırın, çamaşır makinesini tam dolu kullanın "
+            + "ve gece bekleme yüklerini kapatın. Sorunuz: " + reason;
   }
 }

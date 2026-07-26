@@ -8,6 +8,10 @@ spring:
   jpa:
     hibernate.ddl-auto: ${JPA_DDL_AUTO:validate}
     open-in-view: false
+  servlet:
+    multipart:
+      max-file-size: 10MB
+      max-request-size: 10MB
   kafka:
     bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:localhost:9092}
     consumer:
@@ -32,6 +36,6 @@ voltwise:
     registration-topic: voltwise.registration
   ignite-addresses: ${IGNITE_ADDRESSES:localhost:10800}
   gemini-api-key: ${GEMINI_API_KEY:}
-  gemini-model: ${GEMINI_MODEL:gemini-2.5-flash}
+  gemini-model: ${GEMINI_MODEL:gemini-3.6-flash}
   alert-from: ${ALERT_FROM:alerts@voltwise.local}
 springdoc.swagger-ui.path: /swagger-ui.html
