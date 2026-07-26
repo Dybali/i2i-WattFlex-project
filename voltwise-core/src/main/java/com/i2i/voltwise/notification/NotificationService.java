@@ -83,7 +83,7 @@ public class NotificationService {
 
       Map<String, Object> body = Map.of(
               "contents", List.of(Map.of("parts", List.of(Map.of("text", prompt)))),
-              "generationConfig", Map.of("temperature", 0.35, "maxOutputTokens", 320)
+              "generationConfig", Map.of("temperature", 0.35, "maxOutputTokens", 1024)
       );
       Map<?, ?> response = http.post()
               .uri("https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent", model)
