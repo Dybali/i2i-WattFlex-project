@@ -41,7 +41,7 @@ public class HomeService {
         live.register(h);
 
         publishRegistrationEvent(h);
-        return new CreatedHome(h.id, h.name());
+        return new CreatedHome(h.id, h.name);
     }
 
     // YENİ EKLENEN METOD: Mevcut eve cihaz ekler
