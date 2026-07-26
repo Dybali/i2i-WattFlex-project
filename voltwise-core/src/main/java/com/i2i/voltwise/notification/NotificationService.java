@@ -15,6 +15,8 @@ import org.slf4j.LoggerFactory;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.text.Normalizer;
+import java.util.Locale;
 
 @Service
 public class NotificationService {
@@ -111,6 +113,43 @@ public class NotificationService {
 
   private String fallbackAdvice(LiveModels.HomeLive live, String reason) {
     double percent = live.budgetLimit == 0 ? 0 : live.cost / live.budgetLimit * 100;
+    var highest = live.appliances.values().stream()
+            .max((left, right) -> Double.compare(left.watts, right.watts)).orElse(null);
+    String question = normalize(reason);
+
+    // Gemini geçici olarak cevap veremese bile, kullanıcının sorusuna canlı telemetriyle cevap ver.
+    if (highest != null && (question.contains("en cok") || question.contains("en fazla")
+            || question.contains("tuket") || question.contains("cihaz") || question.contains("elektr"))) {
+      String state = highest.anomalous
+              ? " Güvenli sınırı aştığı için anomali olarak işaretlendi."
+              : " Şu an güvenli çalışma aralığında.";
+      return "Şu an en çok elektrik tüketen cihaz " + highest.name + ". Anlık tüketimi "
+              + String.format("%.0f", highest.watts) + " W, güvenli limiti "
+              + String.format("%.0f", highest.safeLimit) + " W." + state;
+    }
+
+    if (question.contains("merhaba") || question.contains("nasilsin")) {
+      return "Merhaba! " + live.name + " için " + String.format("%.2f", live.energyKwh)
+              + " kWh tüketim ve " + String.format("%.2f", live.cost) + " TL maliyet görüyorum. "
+              + (highest == null ? "Enerji verinizi birlikte inceleyebiliriz." : "İstersen " + highest.name + " cihazının tüketimini de analiz edebilirim.");
+    }
+
+    if (question.contains("3 adim") || question.contains("tasarruf plan")) {
+      String deviceName = highest == null ? "yüksek güçlü cihazları" : highest.name + " cihazını";
+      return "3 adımlı plan: 1) " + deviceName + " yoğun saatler dışında kullanın. "
+              + "2) Bekleme modundaki cihazları kapatın. 3) Klimayı 24°C'ye ayarlayıp filtreyi temiz tutun. "
+              + "Bu adımlar mevcut tüketiminizde yaklaşık %10–12 tasarruf sağlayabilir.";
+    }
+
+    if (question.contains("fatura") || question.contains("ay sonu") || question.contains("tahmin")) {
+      double forecast = live.cost * 1.16;
+      return "Mevcut kullanım eğilimine göre ay sonu maliyet tahmini " + String.format("%.2f", forecast)
+              + " TL. Bütçeniz " + String.format("%.2f", live.budgetLimit) + " TL ve şu an kullanım oranınız %"
+              + String.format("%.0f", percent) + ". " + (forecast > live.budgetLimit
+              ? "Bütçe aşımı riskini azaltmak için yüksek tüketimli cihazları gece tarifesine alın."
+              : "Bütçe içinde görünüyorsunuz; gece tarifesiyle maliyeti daha da azaltabilirsiniz.");
+    }
+
     String priority = live.penalty
             ? "Ceza tarifesi etkin. Klima ve yüksek güçlü cihazları yoğun saatler dışında kullanın."
             : percent >= 80
@@ -119,5 +158,11 @@ public class NotificationService {
     return "WattFlex AI analizi: " + priority
             + " Tahmini yüzde 12 tasarruf için klimayı 24°C'de çalıştırın, çamaşır makinesini tam dolu kullanın "
             + "ve gece bekleme yüklerini kapatın. Sorunuz: " + reason;
+  }
+
+  private String normalize(String text) {
+    String value = text == null ? "" : text.toLowerCase(Locale.forLanguageTag("tr-TR"));
+    value = value.replace('ı', 'i').replace('ş', 's').replace('ğ', 'g').replace('ü', 'u').replace('ö', 'o').replace('ç', 'c');
+    return Normalizer.normalize(value, Normalizer.Form.NFD).replaceAll("\\p{M}", "");
   }
 }
