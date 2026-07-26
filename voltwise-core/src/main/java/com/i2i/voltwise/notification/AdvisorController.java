@@ -14,28 +14,26 @@ import java.util.UUID;
 @RestController
 @RequestMapping("/api/advisor")
 public class AdvisorController {
-  private final LiveStateService liveState;
-  private final NotificationService notifications;
+    private final LiveStateService liveState;
+    private final NotificationService notifications;
 
-  public AdvisorController(LiveStateService liveState, NotificationService notifications) {
-    this.liveState = liveState;
-    this.notifications = notifications;
-  }
+    public AdvisorController(LiveStateService liveState, NotificationService notifications) {
+        this.liveState = liveState;
+        this.notifications = notifications;
+    }
 
-  // 1. Frontend'den gelen 'evContext' alanını karşılamak için record güncellendi
-  record AdviceRequest(String question, String evContext) {}
+    record AdviceRequest(String question, String evContext) {}
 
-  @PostMapping("/{homeId}")
-  public Map<String, String> advise(@PathVariable UUID homeId,
-                                    @RequestBody(required = false) AdviceRequest request) {
-    var home = liveState.get(homeId);
-    if (home == null) throw new NoSuchElementException("Ev bulunamadı");
+    @PostMapping("/{homeId}")
+    // DÜZELTİLEN SATIR: @PathVariable içine ("homeId") eklendi
+    public Map<String, String> advise(@PathVariable("homeId") UUID homeId,
+                                      @RequestBody(required = false) AdviceRequest request) {
+        var home = liveState.get(homeId);
+        if (home == null) throw new NoSuchElementException("Ev bulunamadı");
 
-    // 2. Değerleri request üzerinden güvenli bir şekilde (null kontrolü ile) alıyoruz
-    String question = request == null ? "" : request.question();
-    String evContext = request == null ? null : request.evContext();
+        String question = request == null ? "" : request.question();
+        String evContext = request == null ? null : request.evContext();
 
-    // 3. 'advise' metoduna evContext değişkeni üçüncü parametre olarak eklendi
-    return Map.of("answer", notifications.advise(home, question, evContext), "model", "Gemini");
-  }
+        return Map.of("answer", notifications.advise(home, question, evContext), "model", "Gemini");
+    }
 }
