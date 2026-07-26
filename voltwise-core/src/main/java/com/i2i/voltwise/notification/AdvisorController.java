@@ -22,20 +22,14 @@ public class AdvisorController {
     this.notifications = notifications;
   }
 
-  // 1. Frontend'den gelen 'evContext' alanını karşılamak için record güncellendi
-  record AdviceRequest(String question, String evContext) {}
+  record AdviceRequest(String question) {}
 
   @PostMapping("/{homeId}")
   public Map<String, String> advise(@PathVariable UUID homeId,
                                     @RequestBody(required = false) AdviceRequest request) {
     var home = liveState.get(homeId);
     if (home == null) throw new NoSuchElementException("Ev bulunamadı");
-
-    // 2. Değerleri request üzerinden güvenli bir şekilde (null kontrolü ile) alıyoruz
     String question = request == null ? "" : request.question();
-    String evContext = request == null ? null : request.evContext();
-
-    // 3. 'advise' metoduna evContext değişkeni üçüncü parametre olarak eklendi
-    return Map.of("answer", notifications.advise(home, question, evContext), "model", "Gemini");
+    return Map.of("answer", notifications.advise(home, question), "model", "Gemini");
   }
 }

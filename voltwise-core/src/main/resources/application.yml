@@ -8,10 +8,6 @@ spring:
   jpa:
     hibernate.ddl-auto: ${JPA_DDL_AUTO:validate}
     open-in-view: false
-  servlet:
-    multipart:
-      max-file-size: 10MB
-      max-request-size: 10MB
   kafka:
     bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:localhost:9092}
     consumer:
