@@ -5,13 +5,14 @@ import {
   ResponsiveContainer, Tooltip, XAxis, YAxis
 } from 'recharts';
 import './styles.css';
+import DeviceSelector from './components/DeviceSelector';
 
 const API = import.meta.env.VITE_API_URL || '/api';
 const money = n => new Intl.NumberFormat('tr-TR', {style: 'currency', currency: 'TRY'}).format(n || 0);
 const num = (n, d = 1) => Number(n || 0).toFixed(d);
 const clamp = (n, min, max) => Math.max(min, Math.min(max, n));
 const themeOrder = ['dark', 'light', 'system'];
-// Bu gelişmiş kopya, localhost'taki eski WattFlex oturumunu devralmamalı.
+
 const USERS_KEY = 'wattflex-main-users';
 const SESSION_KEY = 'wattflex-main-session';
 const INVOICE_KEY = 'wattflex-main-invoice';
@@ -64,11 +65,10 @@ function App({theme, cycleTheme, user, onLogout, invoiceInfo, evProfile}) {
 
   const totals = useMemo(() => {
     let energy = homes.reduce((a, h) => a + h.energyKwh, 0);
-    // EV Tüketimini toplam portföye tahmini olarak ekle (Demo/Görsel yansıma için)
     if (evProfile) {
       const dailyEv = (evProfile.dailyKm * evProfile.avgConsumptionKwh) / 100;
       const weeklyEv = dailyEv * evProfile.homeChargeDaysPerWeek;
-      energy += (weeklyEv * 4); // Aylık tahmini yansıma
+      energy += (weeklyEv * 4);
     }
     const cost = homes.reduce((a, h) => a + h.cost, 0);
     const alerts = homes.filter(h => h.quotaWarning || h.appliances.some(a => a.anomalous)).length;
@@ -258,7 +258,6 @@ function Advisor({homes, evProfile}) {
     setBusy(true);
 
     try {
-      // Elektrikli araç bilgisini arka planda AI'a besliyoruz
       const evContext = evProfile
           ? `Kullanıcının Elektrikli Aracı: ${evProfile.brand} ${evProfile.model} (${evProfile.batteryCapacity} kWh). Günlük ${evProfile.dailyKm} km yol yapıyor, 100 km'de ${evProfile.avgConsumptionKwh} kWh tüketiyor. Haftada ${evProfile.homeChargeDaysPerWeek} gün evden şarj ediyor.`
           : '';
@@ -286,12 +285,112 @@ function Advisor({homes, evProfile}) {
 function Detail({home, history, onClose}) {
   const anomaly = home.appliances.some(a=>a.anomalous);
   const [deviceId,setDeviceId]=useState(home.appliances[0]?.id);
-  const device=home.appliances.find(a=>a.id===deviceId)||home.appliances[0];
-  const deviceTrend=[.61,.78,.72,1.04,.84,1.12,.91].map((factor,index)=>({slot:['06:00','09:00','12:00','15:00','18:00','21:00','00:00'][index],watts:Math.round(device.watts*factor),limit:device.safeWattLimit}));
-  const projected=home.cost*1.16;
-  const status=device.anomalous?'Yüksek tüketim tespit edildi':'Tüketim güvenli aralıkta';
+  const device = home.appliances.find(a=>a.id===deviceId)||home.appliances[0];
+  const deviceTrend = [.61,.78,.72,1.04,.84,1.12,.91].map((factor,index)=>({slot:['06:00','09:00','12:00','15:00','18:00','21:00','00:00'][index],watts:Math.round((device?.watts||0)*factor),limit:device?.safeWattLimit}));
+  const projected = home.cost*1.16;
+  const status = device?.anomalous?'Yüksek tüketim tespit edildi':'Tüketim güvenli aralıkta';
 
-  return <div className="overlay" onMouseDown={e=>e.target===e.currentTarget&&onClose()}><section className="modal detail-modal"><button className="close" onClick={onClose}>×</button><div className="modal-title"><span className="home-symbol large">⌂</span><div><small>CANLI ENERJİ PROFİLİ</small><h2>{home.name}</h2><p>{home.email}</p></div></div><div className="detail-metrics"><Metric label="ENERJİ" value={`${num(home.energyKwh,2)} kWh`} icon="ϟ" trend="Canlı toplam"/><Metric label="MALİYET" value={money(home.cost)} icon="₺" trend={`${num(home.budgetPercent,0)}% bütçe`}/><Metric label="CİHAZ DURUMU" value={anomaly?'Anomali':'Optimal'} icon="⌁" trend={`${home.appliances.length} cihaz`} warn={anomaly}/></div>{home.penalty&&<div className="penalty"><b>⚠ Ceza tarifesi etkin</b><span>Bütçe sınırı aşıldı; yeni tüketim premium tarife üzerinden hesaplanıyor.</span></div>}<div className="detail-columns"><div><div className="subhead"><h3>Cihaz telemetrisi</h3><span>CİHAZI SEÇİN</span></div><div className="devices">{home.appliances.map(a=><button type="button" className={`device ${a.anomalous?'anomaly':''} ${a.id===deviceId?'selected':''}`} onClick={()=>setDeviceId(a.id)} key={a.id}><span className="device-icon">{a.anomalous?'!':'ϟ'}</span><div><b>{a.name}</b><small>Güvenli sınır {num(a.safeWattLimit,0)} W</small></div><div className="device-power"><strong>{num(a.watts,0)} W</strong><small>{a.anomalous?'Limit ihlali':'Normal'}</small></div></button>)}</div><div className="detail-action"><small>AY SONU TAHMİNİ</small><b>{money(projected)}</b><p>{projected>home.budgetLimit?'Bütçeyi aşma riski var; seçili cihaz için öneriyi uygulayın.':'Bütçe kontrol altında. Gece tarifesiyle daha da düşürülebilir.'}</p></div></div><div className="detail-chart"><div className="subhead"><h3>{device.name} güç analizi</h3><span>WATT / SAAT</span></div><ResponsiveContainer width="100%" height={220}><AreaChart data={deviceTrend}><defs><linearGradient id="deviceFill" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stopColor="var(--accent)" stopOpacity=".45"/><stop offset="1" stopColor="var(--accent)" stopOpacity="0"/></linearGradient></defs><CartesianGrid stroke="var(--grid)" vertical={false}/><XAxis dataKey="slot" stroke="var(--muted)"/><YAxis stroke="var(--muted)"/><Tooltip contentStyle={{background:'var(--panel-solid)',border:'1px solid var(--line)'}}/><Area type="monotone" dataKey="watts" stroke="var(--accent)" strokeWidth={3} fill="url(#deviceFill)"/><Area type="monotone" dataKey="limit" stroke="var(--warning)" strokeDasharray="5 5" fill="none"/></AreaChart></ResponsiveContainer><div className="device-insight"><small>WATTFLEX ÖNERİSİ</small><p>{device.anomalous?`${device.name} güvenli sınırın üzerinde çalışıyor. Kullanım süresini azaltın veya cihaz ayarını düşürün.`:`${device.name} şu anda dengeli çalışıyor. Zirve saatlerde çalıştırmamak ek tasarruf sağlar.`}</p><div><span>Durum <b className={device.anomalous?'risk-high':'risk-good'}>{status}</b></span><span>Güvenli limit <b>{num(device.safeWattLimit,0)} W</b></span></div></div></div></div></section></div>;
+  // Mevcut eve cihaz eklemek için gerekli state'ler
+  const [showAddDevice, setShowAddDevice] = useState(false);
+  const [newAppliance, setNewAppliance] = useState(null);
+  const [addingBusy, setAddingBusy] = useState(false);
+
+  const handleAddDevice = async () => {
+    if(!newAppliance) return alert('Lütfen listeden bir cihaz ve güç seviyesi seçin.');
+    setAddingBusy(true);
+    try {
+      // BURADAKİ FETCH İŞLEMİNİ AKTİF ETTİK
+      const response = await fetch(`${API}/homes/${home.id}/appliances`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: newAppliance.name,
+          safeWattLimit: newAppliance.watt
+        })
+      });
+
+      if (!response.ok) throw new Error("Cihaz eklenemedi.");
+
+      alert(`${newAppliance.name} başarıyla eve eklendi!`);
+      setShowAddDevice(false);
+      setNewAppliance(null);
+
+    } catch (e) {
+      alert('Cihaz eklenirken hata oluştu.');
+    } finally {
+      setAddingBusy(false);
+    }
+  };
+
+  return <div className="overlay" onMouseDown={e=>e.target===e.currentTarget&&onClose()}>
+    <section className="modal detail-modal">
+      <button className="close" onClick={onClose}>×</button>
+      <div className="modal-title">
+        <span className="home-symbol large">⌂</span>
+        <div><small>CANLI ENERJİ PROFİLİ</small><h2>{home.name}</h2><p>{home.email}</p></div>
+      </div>
+
+      <div className="detail-metrics">
+        <Metric label="ENERJİ" value={`${num(home.energyKwh,2)} kWh`} icon="ϟ" trend="Canlı toplam"/>
+        <Metric label="MALİYET" value={money(home.cost)} icon="₺" trend={`${num(home.budgetPercent,0)}% bütçe`}/>
+        <Metric label="CİHAZ DURUMU" value={anomaly?'Anomali':'Optimal'} icon="⌁" trend={`${home.appliances.length} cihaz`} warn={anomaly}/>
+      </div>
+      {home.penalty&&<div className="penalty"><b>⚠ Ceza tarifesi etkin</b><span>Bütçe sınırı aşıldı; yeni tüketim premium tarife üzerinden hesaplanıyor.</span></div>}
+
+      <div className="detail-columns">
+        <div>
+          <div className="subhead">
+            <h3>Cihaz telemetrisi</h3><span>CİHAZI SEÇİN</span>
+          </div>
+
+          <div className="devices">
+            {home.appliances.map(a=><button type="button" className={`device ${a.anomalous?'anomaly':''} ${a.id===deviceId?'selected':''}`} onClick={()=>setDeviceId(a.id)} key={a.id}><span className="device-icon">{a.anomalous?'!':'ϟ'}</span><div><b>{a.name}</b><small>Güvenli sınır {num(a.safeWattLimit,0)} W</small></div><div className="device-power"><strong>{num(a.watts,0)} W</strong><small>{a.anomalous?'Limit ihlali':'Normal'}</small></div></button>)}
+          </div>
+
+          {/* Dinamik Cihaz Ekleme Arayüzü */}
+          <div style={{marginTop: '15px'}}>
+            {!showAddDevice ? (
+                <button className="ghost wide" onClick={() => setShowAddDevice(true)}>+ Yeni Cihaz Ekle</button>
+            ) : (
+                <div style={{padding: '15px', border: '1px dashed var(--line-strong)', borderRadius: '12px', marginTop: '10px'}}>
+                  <DeviceSelector onDeviceDataChange={setNewAppliance} />
+                  <div style={{display: 'flex', gap: '10px', marginTop: '15px'}}>
+                    <button className="ghost" style={{flex: 1}} onClick={() => setShowAddDevice(false)}>İptal</button>
+                    <button className="primary" style={{flex: 1}} onClick={handleAddDevice} disabled={addingBusy}>{addingBusy ? 'Ekleniyor...' : 'Cihazı Kaydet'}</button>
+                  </div>
+                </div>
+            )}
+          </div>
+
+          <div className="detail-action">
+            <small>AY SONU TAHMİNİ</small><b>{money(projected)}</b>
+            <p>{projected>home.budgetLimit?'Bütçeyi aşma riski var; seçili cihaz için öneriyi uygulayın.':'Bütçe kontrol altında. Gece tarifesiyle daha da düşürülebilir.'}</p>
+          </div>
+        </div>
+
+        {device && (
+            <div className="detail-chart">
+              <div className="subhead"><h3>{device.name} güç analizi</h3><span>WATT / SAAT</span></div>
+              <ResponsiveContainer width="100%" height={220}>
+                <AreaChart data={deviceTrend}>
+                  <defs><linearGradient id="deviceFill" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stopColor="var(--accent)" stopOpacity=".45"/><stop offset="1" stopColor="var(--accent)" stopOpacity="0"/></linearGradient></defs>
+                  <CartesianGrid stroke="var(--grid)" vertical={false}/>
+                  <XAxis dataKey="slot" stroke="var(--muted)"/><YAxis stroke="var(--muted)"/>
+                  <Tooltip contentStyle={{background:'var(--panel-solid)',border:'1px solid var(--line)'}}/>
+                  <Area type="monotone" dataKey="watts" stroke="var(--accent)" strokeWidth={3} fill="url(#deviceFill)"/>
+                  <Area type="monotone" dataKey="limit" stroke="var(--warning)" strokeDasharray="5 5" fill="none"/>
+                </AreaChart>
+              </ResponsiveContainer>
+              <div className="device-insight">
+                <small>WATTFLEX ÖNERİSİ</small>
+                <p>{device.anomalous?`${device.name} güvenli sınırın üzerinde çalışıyor. Kullanım süresini azaltın veya cihaz ayarını düşürün.`:`${device.name} şu anda dengeli çalışıyor. Zirve saatlerde çalıştırmamak ek tasarruf sağlar.`}</p>
+                <div><span>Durum <b className={device.anomalous?'risk-high':'risk-good'}>{status}</b></span><span>Güvenli limit <b>{num(device.safeWattLimit,0)} W</b></span></div>
+              </div>
+            </div>
+        )}
+      </div>
+    </section>
+  </div>;
 }
 
 function LegacyDetail({home, history, onClose}) {
@@ -300,12 +399,82 @@ function LegacyDetail({home, history, onClose}) {
 }
 
 function CreateHome({onClose, onCreated, invoiceInfo}) {
-  const [busy,setBusy]=useState(false),[error,setError]=useState('');
+  const [busy,setBusy] = useState(false);
+  const [error,setError] = useState('');
+
   const hasInvoiceTariff = !!invoiceInfo?.unitPrice;
   const [tariffLocked, setTariffLocked] = useState(hasInvoiceTariff);
   const tariffDefault = hasInvoiceTariff ? invoiceInfo.unitPrice.toFixed(4) : '2.6';
-  async function submit(e){e.preventDefault();setBusy(true);const f=new FormData(e.currentTarget);const body={name:f.get('name'),email:f.get('email'),budgetLimit:+f.get('budget'),baseTariff:+f.get('tariff'),penaltyMultiplier:+f.get('penalty'),appliances:[{name:f.get('device'),safeWattLimit:+f.get('limit')}]};try{const r=await fetch(`${API}/homes`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});if(!r.ok)throw new Error((await r.json()).message);onCreated();}catch(e){setError(e.message)}finally{setBusy(false)}}
-  return <div className="overlay"><form className="modal form" onSubmit={submit}><button type="button" className="close" onClick={onClose}>×</button><span className="kicker">YENİ ENERJİ ALANI</span><h2>Ev profilini oluştur</h2><p className="form-intro">WattFlex birkaç saniye içinde tüketim simülasyonunu başlatacak.</p>{error&&<div className="toast">{error}</div>}<label>Ev adı<input name="name" required placeholder="Kadıköy Evi"/></label><label>Bildirim e-postası<input name="email" type="email" required placeholder="siz@ornek.com"/></label><div className="row"><label>Aylık bütçe (₺)<input name="budget" type="number" min="1" defaultValue="1500"/></label><label>Tarife (₺/kWh)<input name="tariff" type="number" step=".0001" min="0" defaultValue={tariffDefault} readOnly={tariffLocked} className={tariffLocked ? 'locked-input' : ''}/></label></div>{hasInvoiceTariff && <p className="auth-hint tariff-hint"><span>⌁ Birim enerji bedeli faturandan otomatik alındı — {invoiceInfo.tariffLabel}.</span>{tariffLocked ? <button type="button" className="link-button" onClick={() => setTariffLocked(false)}>Değiştir</button> : <button type="button" className="link-button" onClick={() => setTariffLocked(true)}>Faturadaki değere dön</button>}</p>}<label>Ceza tarifesi çarpanı<input name="penalty" type="number" step=".1" min="1" defaultValue="1.5"/></label><div className="row"><label>İlk cihaz<input name="device" required placeholder="Klima"/></label><label>Güvenli güç sınırı (W)<input name="limit" type="number" min="1" defaultValue="1800"/></label></div><button className="primary wide" disabled={busy}>{busy?'Profil hazırlanıyor…':'Enerji alanını başlat →'}</button></form></div>;
+
+  // Cihaz seçici state'i
+  const [selectedAppliance, setSelectedAppliance] = useState(null);
+
+  async function submit(e){
+    e.preventDefault();
+    setBusy(true);
+    const f=new FormData(e.currentTarget);
+
+    // Kullanıcı cihaz seçti mi kontrolü
+    if (!selectedAppliance) {
+      setError('Lütfen listeden bir cihaz ve güç seviyesi seçin.');
+      setBusy(false);
+      return;
+    }
+
+    const body={
+      name:f.get('name'),
+      email:f.get('email'),
+      budgetLimit:+f.get('budget'),
+      baseTariff:+f.get('tariff'),
+      penaltyMultiplier:+f.get('penalty'),
+      appliances:[{
+        name: selectedAppliance.name,
+        safeWattLimit: selectedAppliance.watt
+      }]
+    };
+
+    try{
+      const r=await fetch(`${API}/homes`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+      if(!r.ok)throw new Error((await r.json()).message);
+      onCreated();
+    }catch(e){
+      setError(e.message)
+    }finally{
+      setBusy(false)
+    }
+  }
+
+  return (
+      <div className="overlay">
+        <form className="modal form" onSubmit={submit}>
+          <button type="button" className="close" onClick={onClose}>×</button>
+          <span className="kicker">YENİ ENERJİ ALANI</span>
+          <h2>Ev profilini oluştur</h2>
+          <p className="form-intro">WattFlex birkaç saniye içinde tüketim simülasyonunu başlatacak.</p>
+
+          {error && <div className="toast">{error}</div>}
+
+          <label>Ev adı<input name="name" required placeholder="Kadıköy Evi"/></label>
+          <label>Bildirim e-postası<input name="email" type="email" required placeholder="siz@ornek.com"/></label>
+
+          <div className="row">
+            <label>Aylık bütçe (₺)<input name="budget" type="number" min="1" defaultValue="1500"/></label>
+            <label>Tarife (₺/kWh)<input name="tariff" type="number" step=".0001" min="0" defaultValue={tariffDefault} readOnly={tariffLocked} className={tariffLocked ? 'locked-input' : ''}/></label>
+          </div>
+
+          {hasInvoiceTariff && <p className="auth-hint tariff-hint"><span>⌁ Birim enerji bedeli faturandan otomatik alındı — {invoiceInfo.tariffLabel}.</span>{tariffLocked ? <button type="button" className="link-button" onClick={() => setTariffLocked(false)}>Değiştir</button> : <button type="button" className="link-button" onClick={() => setTariffLocked(true)}>Faturadaki değere dön</button>}</p>}
+
+          <label>Ceza tarifesi çarpanı<input name="penalty" type="number" step=".1" min="1" defaultValue="1.5"/></label>
+
+          {/* Cihaz Ekleme Modülü */}
+          <div style={{ marginTop: '20px', marginBottom: '20px' }}>
+            <DeviceSelector onDeviceDataChange={setSelectedAppliance} />
+          </div>
+
+          <button className="primary wide" disabled={busy}>{busy?'Profil hazırlanıyor…':'Enerji alanını başlat →'}</button>
+        </form>
+      </div>
+  );
 }
 
 function NotificationDrawer({alerts,onClose,onOpenHome}) {return <div className="drawer-backdrop" onMouseDown={e=>e.target===e.currentTarget&&onClose()}><aside className="drawer"><div className="drawer-head"><div><span className="kicker">CANLI MERKEZ</span><h2>Bildirimler</h2></div><button onClick={onClose}>×</button></div>{alerts.length?<div className="alert-list">{alerts.map((a,i)=><button key={i} onClick={()=>onOpenHome(a.home)}><span className={a.level}>!</span><div><b>{a.title}</b><p>{a.text}</p><small>Şimdi • {a.home.name}</small></div></button>)}</div>:<div className="empty compact-empty"><b>✓</b><h3>Her şey yolunda</h3><p>Aktif enerji uyarısı bulunmuyor.</p></div>}<div className="drawer-footer">Bildirimler 2 saniyede bir güncellenir.</div></aside></div>}
@@ -552,7 +721,6 @@ function BillUpload({theme, cycleTheme, onDone}) {
   </div>;
 }
 
-// YENİ EKLENEN EV (ELEKTRİKLİ ARAÇ) ONBOARDING BİLEŞENİ
 function EVOnboarding({theme, cycleTheme, onDone}) {
   const EV_DATABASE = [
     { brand: 'Togg', model: 'T10X', batteries: [{ name: 'Standart Menzil', capacity: 52.4 }, { name: 'Uzun Menzil', capacity: 88.5 }] },
@@ -672,7 +840,6 @@ function Root() {
     try { return JSON.parse(localStorage.getItem(INVOICE_KEY)); } catch { return null; }
   });
 
-  // Fatura & Araç adımları kontrolleri
   const [onboarded, setOnboarded] = useState(() => sessionStorage.getItem(ONBOARD_KEY) === '1');
   const [evOnboarded, setEvOnboarded] = useState(() => sessionStorage.getItem(EV_ONBOARD_KEY) === '1');
   const [evProfile, setEvProfile] = useState(() => {
